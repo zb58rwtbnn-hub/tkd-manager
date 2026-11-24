@@ -25,6 +25,8 @@ import { handleTrialPage, trialToken, TRIAL_USERS_FILE } from './trial-page.js'
 import { handleContestPage, contestToken } from './contest-page.js'
 import { handleSignupPage, signupToken, SIGNUP_USERS_FILE } from './signup-page.js'
 import { contestKey, contestClosed } from './src/contests.js'
+import { handleExamPage, examToken } from './exam-page.js'
+import { examKey, examClosed, candidateText, EXAM_TYPE } from './src/exams.js'
 import { TRIAL_DEFAULTS, trialDateText } from './src/trials.js'
 import { findSpeakers, speak, announce, keepWarm, closeSpeakers, defaultSpeaker, inSpeakWindow } from './speaker.js'
 
@@ -568,6 +570,56 @@ async function sendContest(env, api, contestId, mode, to) {
   return result
 }
 
+// ── 晉級考試：館長勾選可以考的學員 → 個別通知家長（每個孩子的道帶、費用不同）→ 家長點連結報名（exam-page.js） ──
+function examMessage(env, e, userId, kids, reminder) {
+  const base = readJson(TUNNEL_FILE, {}).url
+  if (!base) return null
+  const link = `${base}/e/${examToken(env.LINE_CHANNEL_SECRET, e.id, userId)}`
+  const lines = kids.map(k => { const c = e.candidates[k.id]; return `👦 ${k.name}：${candidateText(c)}\n　 ${EXAM_TYPE[c.type]}費用 ${money(c.fee)}` }).join('\n')
+  const info = [e.date && `📅 考試日期：${md(e.date)}`, e.deadline && `⏰ ${md(e.deadline)} 截止報名`].filter(Boolean).join('\n')
+  return `${reminder ? '⏰ 提醒：還沒回覆晉級考試\n' : '🥋 晉級考試通知\n'}【${e.title}】\n${info}\n\n${lines}\n\n請點連結報名（不參加也請按「這次不參加」）：\n${link}`
+}
+
+// mode：all 有孩子可以考的家長／pending 還沒回覆的／me 館長自己測試／parent 指定一位家長
+async function sendExam(env, api, examId, mode, to) {
+  const data = readAppData()
+  const e = (data?.exams || []).find(x => String(x.id) === String(examId))
+  if (!e) throw new Error('找不到這場考試')
+  if (!readJson(TUNNEL_FILE, {}).url) throw new Error('LINE 通道還沒開好，請稍後再試')
+  const parents = readJson(PARENTS_FILE, {})
+  const students = data.students || []
+  const result = { sent: 0, failed: [], unbound: [] }
+  if (mode === 'me') {
+    // 測試：館長收到的連結用館長綁定的孩子；沒有候選孩子就用名單上第一位示範
+    const mine = students.filter(s => parents[env.LINE_USER_ID]?.students.includes(s.id) && e.candidates[s.id])
+    if (!mine.length) throw new Error('館長 LINE 綁定的學員不在這次的考試名單裡，沒辦法測試。可以先把林小明勾進名單再測。')
+    await api.push(env.LINE_USER_ID, examMessage(env, e, env.LINE_USER_ID, mine, false))
+    return { sent: 1, failed: [], unbound: [] }
+  }
+  const boundIds = new Set(Object.values(parents).flatMap(p => p.students))
+  for (const [userId, p] of Object.entries(parents)) {
+    if (mode === 'parent' && userId !== to) continue
+    let kids = students.filter(s => p.students.includes(s.id) && e.candidates[s.id])
+    if (mode === 'pending') kids = kids.filter(s => !data.examEntries?.[examKey(e.id, s.id)])
+    if (!kids.length) continue
+    try { await api.push(userId, examMessage(env, e, userId, kids, mode === 'pending')); result.sent++ }
+    catch (err) { result.failed.push(`${p.displayName || userId}：${err.message}`) }
+  }
+  result.unbound = students.filter(s => e.candidates[s.id] && !boundIds.has(s.id) && !data.examEntries?.[examKey(e.id, s.id)]).map(s => s.name)
+  console.log(`[晉級考試] 發送「${e.title}」（${mode}）：${result.sent} 位家長，失敗 ${result.failed.length}`)
+  return result
+}
+
+function examReply(env, userId) {
+  const p = readJson(PARENTS_FILE, {})[userId]
+  if (!p?.students?.length) return '要報名晉級考試，請先綁定孩子：直接傳孩子的全名（例如：林小明），道館確認後就可以了。'
+  const data = readAppData()
+  const kidsOf = (e) => (data.students || []).filter(s => p.students.includes(s.id) && e.candidates[s.id])
+  const open = (data?.exams || []).filter(e => !examClosed(e, localDate()) && kidsOf(e).length)
+  if (!open.length) return '目前沒有您孩子可以報名的晉級考試，有新的考試時會用 LINE 通知您。'
+  return open.map(e => examMessage(env, e, userId, kidsOf(e), false)).filter(Boolean).join('\n\n────────\n\n') || 'LINE 通道還沒開好，請稍後再試。'
+}
+
 // 家長傳「比賽」：回覆所有還在報名中的比賽連結
 function contestReply(env, userId) {
   const p = readJson(PARENTS_FILE, {})[userId]
@@ -992,6 +1044,10 @@ async function handleEvent(event, env, api) {
     await signupReply(event, env, api, userId)
     return
   }
+  if (!HIDE.has('exams') && /^(晉級|晉段|晉等|考試|晉級考試|升級考試)$/.test(text.replace(/\s/g, ''))) {
+    await api.reply(event.replyToken, examReply(env, userId))
+    return
+  }
   if (!HIDE.has('contests') && /^(比賽|報名|比賽報名|報名比賽)$/.test(text.replace(/\s/g, ''))) {
     await api.reply(event.replyToken, contestReply(env, userId))
     return
@@ -1056,6 +1112,7 @@ function startWebhookServer(env) {
       if (await handleSignupPage(req, res, { secret: env.LINE_CHANNEL_SECRET, onSubmit: (u, n, d) => signupSubmit(env, api, u, n, d) })) return
       if (await handleTrialPage(req, res, { secret: env.LINE_CHANNEL_SECRET, onBooked: t => trialBooked(env, api, t), onCancelled: t => trialCancelled(env, api, t) })) return
       if (await handleOrderPage(req, res, { secret: env.LINE_CHANNEL_SECRET, users: orderUsers })) return
+      if (await handleExamPage(req, res, { secret: env.LINE_CHANNEL_SECRET, users: () => readJson(PARENTS_FILE, {}) })) return
       if (await handleContestPage(req, res, { secret: env.LINE_CHANNEL_SECRET, users: () => readJson(PARENTS_FILE, {}) })) return
     } catch (e) {
       console.error('[採購] 訂購頁錯誤：', e.message)
@@ -1253,6 +1310,14 @@ function localApi(env) {
         for (const [uid, b] of Object.entries(all)) if (String(b.coachId) === String(coachId)) delete all[uid]
         writeJson(COACHES_FILE, all)
         return reply(res, 200, { ok: true })
+      }
+
+      // 晉級考試：發給家長 { examId, mode: 'all' | 'pending' | 'me' | 'parent', to }
+      if (url === '/api/line/exam-send' && req.method === 'POST') {
+        const { examId, mode, to } = JSON.parse(await readBody(req))
+        if (!['all', 'pending', 'me', 'parent'].includes(mode)) return reply(res, 400, { error: '格式錯誤' })
+        try { return reply(res, 200, await sendExam(env, api, examId, mode, to)) }
+        catch (e) { return reply(res, 400, { error: e.message }) }
       }
 
       // 比賽報名：發給家長 { contestId, mode: 'all' | 'pending' | 'me' }

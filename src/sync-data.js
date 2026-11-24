@@ -13,9 +13,11 @@ function flatten(data) {
   for (const c of data.coaches || []) put("coaches", c.id, c);
   for (const o of data.orders || []) put("orders", o.id, o);
   for (const c of data.contests || []) put("contests", c.id, c);
+  for (const e of data.exams || []) put("exams", e.id, e);
   for (const [k, v] of Object.entries(data.orderLines || {})) put("orderLines", k, v);
   for (const [k, v] of Object.entries(data.trials || {})) put("trials", k, v);
   for (const [k, v] of Object.entries(data.contestEntries || {})) put("contestEntries", k, v);
+  for (const [k, v] of Object.entries(data.examEntries || {})) put("examEntries", k, v);
   for (const [k, v] of Object.entries(data.coachPunches || {})) put("coachPunches", k, v);
   for (const [sid, days] of Object.entries(data.attendance || {})) {
     for (const [date, r] of Object.entries(days || {})) put("attendance", `${sid}|${date}`, r);
@@ -47,6 +49,8 @@ export function applyOps(data, ops) {
     trials: { ...(data.trials || {}) },
     contests: [...(data.contests || [])],
     contestEntries: { ...(data.contestEntries || {}) },
+    exams: [...(data.exams || [])],
+    examEntries: { ...(data.examEntries || {}) },
     attendance: { ...(data.attendance || {}) },
     belts: { ...(data.belts || {}) },
     makeups: { ...(data.makeups || {}) },
@@ -55,7 +59,7 @@ export function applyOps(data, ops) {
   for (const [k, v] of ops) {
     const i = k.indexOf(SEP);
     const col = k.slice(0, i), key = k.slice(i + 1);
-    if (col === "students" || col === "competitions" || col === "coaches" || col === "orders" || col === "contests") {
+    if (col === "students" || col === "competitions" || col === "coaches" || col === "orders" || col === "contests" || col === "exams") {
       const at = d[col].findIndex(x => String(x.id) === key);
       if (v === null) { if (at >= 0) d[col].splice(at, 1); }
       else if (at >= 0) d[col][at] = v;
@@ -66,7 +70,7 @@ export function applyOps(data, ops) {
       const days = { ...(d.attendance[sid] || {}) };
       if (v === null) delete days[date]; else days[date] = v;
       d.attendance[sid] = days;
-    } else if (col === "belts" || col === "makeups" || col === "coachPunches" || col === "orderLines" || col === "trials" || col === "contestEntries") {
+    } else if (col === "belts" || col === "makeups" || col === "coachPunches" || col === "orderLines" || col === "trials" || col === "contestEntries" || col === "examEntries") {
       if (v === null) delete d[col][key]; else d[col][key] = v;
     } else if (col === "billing") {
       d.billing = v;

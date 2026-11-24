@@ -4,6 +4,7 @@ import { punchKey, lessonsOf, monthSummary, LESSON_MARK_MIN } from "./coach-less
 import { DEFAULT_SIZES, MAX_QTY, MAX_NAME, orderKey, orderClosed, linesTotal, orderStats } from "./orders.js";
 import { TRIAL_DEFAULTS, TRIAL_STATUS, trialDateText } from "./trials.js";
 import { contestKey, contestClosed, contestStats, entryFee, itemNames } from "./contests.js";
+import { EXAM_FEES, EXAM_TYPE, DAN_BELTS, PROMOTION_GAP_MONTHS, examKey, examClosed, defaultType, candidateFor, lastPromotion, readyForExam, candidateText, examStats } from "./exams.js";
 
 // ── 13 級道帶系統 ──────────────────────────────────────
 const BELT_SYSTEM = [
@@ -536,8 +537,8 @@ function initAttendance(students) {
 // ── 本地存儲函數 ──────────────────────────────────────
 const STORAGE_KEY = "taekwondo_manager_v2";
 
-function saveToLocalStorage(students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries) {
-  const data = { students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries };
+function saveToLocalStorage(students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries, exams, examEntries) {
+  const data = { students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries, exams, examEntries };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
@@ -621,7 +622,7 @@ function useServerSync(local, setAll, savedData) {
     if (!synced.current) return;
     const t = setTimeout(sync, 300);
     return () => clearTimeout(t);
-  }, [local.students, local.attendance, local.belts, local.makeups, local.competitions, local.coaches, local.coachPunches, local.orders, local.orderLines, local.trials, local.contests, local.contestEntries, local.billing]);
+  }, [local.students, local.attendance, local.belts, local.makeups, local.competitions, local.coaches, local.coachPunches, local.orders, local.orderLines, local.trials, local.contests, local.contestEntries, local.exams, local.examEntries, local.billing]);
 
   return { status, loaded: synced.current !== null };
 }
@@ -676,6 +677,8 @@ export default function App() {
   const [trials, setTrials] = useState(savedData?.trials || {});
   const [contests, setContests] = useState(savedData?.contests || []);
   const [contestEntries, setContestEntries] = useState(savedData?.contestEntries || {});
+  const [exams, setExams] = useState(savedData?.exams || []);
+  const [examEntries, setExamEntries] = useState(savedData?.examEntries || {});
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
@@ -684,8 +687,8 @@ export default function App() {
 
   // 自動保存
   useEffect(() => {
-    saveToLocalStorage(students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries);
-  }, [students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries]);
+    saveToLocalStorage(students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries, exams, examEntries);
+  }, [students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries, exams, examEntries]);
 
   const [fontScale, setFontScale] = useState(loadFontScale);
   useEffect(() => {
@@ -716,9 +719,11 @@ export default function App() {
     setTrials(d.trials || {});
     setContests(d.contests || []);
     setContestEntries(d.contestEntries || {});
+    setExams(d.exams || []);
+    setExamEntries(d.examEntries || {});
     setBilling({ ...DEFAULT_BILLING, ...d.billing });
   };
-  const sync = useServerSync({ students, attendance, belts, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries, billing }, setAll, savedData);
+  const sync = useServerSync({ students, attendance, belts, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries, exams, examEntries, billing }, setAll, savedData);
 
   // 每位學員都要有家長 LINE 綁定碼與繳費方案（舊資料：已繳 → 下個月繳費日；未繳 → 本月繳費日）
   const isComplete = (s) => s.bindCode && s.plan && s.nextDueDate;
@@ -825,6 +830,7 @@ export default function App() {
           { key: "makeup",    icon: "↺", label: "補課管理" },
           { key: "fees",      icon: "◎", label: "收費管理" },
           { key: "belts",     icon: "◆", label: "段位記錄" },
+          { key: "exams",     icon: "🎖", label: "晉級考試" },
           { key: "contests",  icon: "📝", label: "比賽報名" },
           { key: "compete",   icon: "🏆", label: "比賽成績" },
           { key: "coach",     icon: "🧑‍🏫", label: "教練打卡" },
@@ -879,6 +885,7 @@ export default function App() {
         {shown === "notify"     && <NotifySettings students={students} setStudents={setStudents} billing={billing} setBilling={setBilling} />}
         {shown === "compete"    && <Competitions students={students} competitions={competitions} setCompetitions={setCompetitions} />}
         {shown === "coach"      && <CoachPunches students={students} coaches={coaches} setCoaches={setCoaches} coachPunches={coachPunches} setCoachPunches={setCoachPunches} billing={billing} />}
+        {shown === "exams"      && <Exams students={students} setStudents={setStudents} belts={belts} setBelts={setBelts} exams={exams} setExams={setExams} entries={examEntries} setEntries={setExamEntries} />}
         {shown === "contests"   && <Contests students={students} contests={contests} setContests={setContests} entries={contestEntries} setEntries={setContestEntries} />}
         {shown === "trials"     && <Trials trials={trials} setTrials={setTrials} students={students} setStudents={setStudents} billing={billing} setBilling={setBilling} />}
         {shown === "orders"     && <Orders students={students} orders={orders} setOrders={setOrders} orderLines={orderLines} setOrderLines={setOrderLines} />}
@@ -899,7 +906,7 @@ export default function App() {
               <button 
                 style={{ ...S.btn("gold"), width: "100%" }}
                 onClick={() => { 
-                  const data = { students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries, billing, exportDate: new Date().toISOString() };
+                  const data = { students, attendance, belts, cardMap, makeups, competitions, coaches, coachPunches, orders, orderLines, trials, contests, contestEntries, exams, examEntries, billing, exportDate: new Date().toISOString() };
                   const jsonStr = JSON.stringify(data, null, 2);
                   const blob = new Blob([jsonStr], { type: "application/json" });
                   const url = URL.createObjectURL(blob);
@@ -2978,6 +2985,247 @@ function Contests({ students, contests, setContests, entries, setEntries }) {
         </div>
       )}
       {form && contestForm()}
+    </div>
+  );
+}
+
+// ── 晉級考試：勾選可以考的學員 → LINE 個別通知（每人道帶、費用不同）→ 家長報名 → 收費 → 考完按「通過」自動升道帶 ──
+function Exams({ students, setStudents, belts, setBelts, exams, setExams, entries, setEntries }) {
+  const sorted = [...exams].sort((a, b) => b.createdAt - a.createdAt);
+  const [selId, setSelId] = useState(sorted[0]?.id ?? null);
+  const e = exams.find(x => x.id === selId) || sorted[0];
+  const [form, setForm] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [filter, setFilter] = useState("all");
+  const label = (text) => <label style={{ fontSize: sc(11), color:"#666666", letterSpacing:"0.1em", display:"block", marginBottom:6 }}>{text}</label>;
+  const smallBtn = (variant) => ({ ...S.btn(variant), padding:"5px 12px", fontSize: sc(12) });
+  const money = (n) => `$${Math.round(n).toLocaleString()}`;
+  const byBelt = [...students].sort(byBeltHigh);
+
+  // ── 建立／編輯考試 ──
+  const pick = (s, fees, type = defaultType(s.belt)) => candidateFor(s.belt, type, fees);
+  const newForm = () => {
+    const d = new Date(), fees = { ...EXAM_FEES, dan: { ...EXAM_FEES.dan } };
+    const chosen = Object.fromEntries(students.filter(s => s.belt !== "四段" && readyForExam(s, belts[s.id], today)).map(s => [s.id, pick(s, fees)]));
+    setForm({ title: `${d.getFullYear()}年${d.getMonth() + 1}月晉級考試`, date: "", deadline: "", note: "", fees, candidates: chosen });
+  };
+  const toggle = (s, on) => setForm(f => {
+    const c = { ...f.candidates };
+    if (on) c[s.id] = pick(s, f.fees); else delete c[s.id];
+    return { ...f, candidates: c };
+  });
+  const setType = (s, type) => setForm(f => ({ ...f, candidates: { ...f.candidates, [s.id]: pick(s, f.fees, type) } }));
+  const setFee = (s, fee) => setForm(f => ({ ...f, candidates: { ...f.candidates, [s.id]: { ...f.candidates[s.id], fee: fee === "" ? "" : +fee } } }));
+  // 改了費用設定，所有考生的費用跟著重算
+  const setFees = (fees) => setForm(f => ({ ...f, fees, candidates: Object.fromEntries(Object.entries(f.candidates).map(([id, c]) => [id, { ...c, fee: candidateFor(c.from, c.type, fees).fee }])) }));
+  const selectAll = (mode) => setForm(f => ({ ...f, candidates: Object.fromEntries(students
+    .filter(s => s.belt !== "四段" && (mode === "all" || (mode === "ready" && readyForExam(s, belts[s.id], today))))
+    .map(s => [s.id, f.candidates[s.id] || pick(s, f.fees)])) }));
+  const save = () => {
+    const title = form.title.trim();
+    if (!title) return alert("請填寫考試名稱");
+    if (!Object.keys(form.candidates).length) return alert("請至少勾選一位考生");
+    const bad = Object.entries(form.candidates).find(([, c]) => !(+c.fee >= 0) || c.fee === "");
+    if (bad) return alert(`${students.find(s => String(s.id) === bad[0])?.name} 的費用沒有填`);
+    const rec = { title, date: form.date, deadline: form.deadline, note: form.note.trim(), fees: form.fees,
+      candidates: Object.fromEntries(Object.entries(form.candidates).map(([id, c]) => [id, { ...c, fee: +c.fee }])) };
+    if (form.id) setExams(exams.map(x => x.id === form.id ? { ...x, ...rec } : x));
+    else { const id = Date.now(); setExams([...exams, { ...rec, id, open: true, createdAt: id }]); setSelId(id); }
+    setForm(null);
+  };
+  const remove = () => {
+    if (!confirm(`刪除「${e.title}」？所有報名紀錄也會一起刪除（已經升級的道帶不會改回來）。`)) return;
+    setExams(exams.filter(x => x.id !== e.id));
+    setEntries(Object.fromEntries(Object.entries(entries).filter(([k]) => !k.startsWith(`${e.id}|`))));
+    setSelId(null);
+  };
+  const send = async (mode) => {
+    const text = { me: "先傳給你自己的 LINE 測試？", all: "用 LINE 個別通知名單上所有學員的家長？", pending: "提醒還沒回覆的家長？" }[mode];
+    if (!confirm(text)) return;
+    setSending(true);
+    const r = await lineApi("/api/line/exam-send", { examId: e.id, mode });
+    setSending(false);
+    if (!r.ok) return alert("❌ 發送失敗：" + r.error);
+    const lines = [`✅ 已發送給 ${r.sent} 位家長`];
+    if (r.failed.length) lines.push(`\n❌ 失敗 ${r.failed.length} 位：\n${r.failed.join("\n")}`);
+    if (mode !== "me" && r.unbound.length) lines.push(`\n⚠ 以下 ${r.unbound.length} 位學員的家長沒有綁定 LINE，收不到，請直接詢問後在這裡幫他登記：\n${r.unbound.join("、")}`);
+    alert(lines.join("\n"));
+  };
+
+  // ── 報名、收費、結果 ──
+  const setRec = (s, patch) => setEntries(prev => { const k = examKey(e.id, s.id); return { ...prev, [k]: { ...prev[k], ...patch } }; });
+  const note = (c) => `${e.title} ${EXAM_TYPE[c.type]}通過`;
+  const pass = (s, c) => {
+    if (!confirm(`${s.name} ${candidateText(c)} 通過？${c.type === "grade" ? "" : `\n道帶會改成「${c.to}」，並寫進段位記錄。`}`)) return;
+    const date = e.date || today;
+    setBelts(h => ({ ...h, [s.id]: [...(h[s.id] || [{ belt: s.belt, date: s.joinDate, note: "入館時道帶" }]), { belt: c.to, date, note: note(c) }] }));
+    if (c.type !== "grade") setStudents(list => list.map(x => x.id === s.id ? { ...x, belt: c.to } : x));
+    setRec(s, { result: "pass" });
+  };
+  const undoPass = (s, c) => {
+    if (!confirm(`取消 ${s.name} 的「通過」？${c.type === "grade" ? "" : `\n道帶會改回「${c.from}」。`}`)) return;
+    setBelts(h => {
+      const list = [...(h[s.id] || [])];
+      const i = list.map(x => x.note).lastIndexOf(note(c));
+      if (i >= 0) list.splice(i, 1);
+      return { ...h, [s.id]: list };
+    });
+    if (c.type !== "grade") setStudents(list => list.map(x => x.id === s.id ? { ...x, belt: c.from } : x));
+    setRec(s, { result: undefined });
+  };
+
+  const header = (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom: 24, gap: 12, flexWrap: "wrap" }}>
+      <div><div style={S.pageTitle}>晉級考試</div><div style={S.pageSub}>BELT EXAMS · 勾選考生、LINE 個別通知、收費，通過自動升道帶</div></div>
+      <button style={S.btn("gold")} onClick={newForm}>＋ 新增晉級考試</button>
+    </div>
+  );
+
+  const examForm = form && (
+    <div style={{ position:"fixed", inset:0, background:"#000a", display:"flex", alignItems:"center", justifyContent:"center", zIndex:100 }}>
+      <div style={{ ...S.card, width: `min(96vw, ${sc(820)})`, boxShadow: "0 24px 64px #0008", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: sc(16), fontWeight:600, marginBottom:16 }}>{form.id ? "編輯晉級考試" : "新增晉級考試"}</div>
+        <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:12, marginBottom:12 }}>
+          <div>{label("考試名稱（家長會看到）")}<input style={S.input} value={form.title} onChange={ev => setForm({ ...form, title: ev.target.value })} /></div>
+          <div>{label("考試日期")}<input style={S.input} type="date" value={form.date} onChange={ev => setForm({ ...form, date: ev.target.value })} /></div>
+          <div>{label("報名截止日")}<input style={S.input} type="date" value={form.deadline} onChange={ev => setForm({ ...form, deadline: ev.target.value })} /></div>
+        </div>
+        <div style={{ marginBottom:12 }}>{label("說明（選填，家長會看到）")}<input style={S.input} value={form.note} onChange={ev => setForm({ ...form, note: ev.target.value })} placeholder="例：請穿道服、提早 15 分鐘到；費用請在考試前交給館長" /></div>
+        <div style={{ ...S.card, background:"#f9f9f9", padding:12, marginBottom:12 }}>
+          <div style={{ fontSize: sc(13), fontWeight:800, marginBottom:8 }}>費用設定</div>
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            {[["晉級（色帶）", form.fees.color, v => setFees({ ...form.fees, color: v })], ["晉等（黑帶）", form.fees.grade, v => setFees({ ...form.fees, grade: v })],
+              ...DAN_BELTS.map(b => [`晉段 → ${b}`, form.fees.dan[b], v => setFees({ ...form.fees, dan: { ...form.fees.dan, [b]: v } })])].map(([l, v, set]) => (
+              <div key={l} style={{ width: 120 }}>{label(l)}<input style={S.input} type="number" min="0" value={v} onChange={ev => set(+ev.target.value || 0)} /></div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", marginBottom:8 }}>
+          <b style={{ fontSize: sc(14) }}>考生（{Object.keys(form.candidates).length} 位）</b>
+          <button style={smallBtn("ghost")} onClick={() => selectAll("ready")}>只選上次晉級滿 {PROMOTION_GAP_MONTHS} 個月的</button>
+          <button style={smallBtn("ghost")} onClick={() => selectAll("all")}>全選</button>
+          <button style={smallBtn("ghost")} onClick={() => selectAll("none")}>全不選</button>
+        </div>
+        <table style={S.table}>
+          <thead><tr>{["", "學員", "目前道帶", "上次晉級", "考試類型", "考什麼", "費用"].map(h => <th key={h} style={{ ...S.th, padding:"10px 12px" }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {byBelt.map(s => {
+              const c = form.candidates[s.id], last = lastPromotion(s, belts[s.id]), ready = readyForExam(s, belts[s.id], today);
+              const td = { ...S.td, padding:"8px 12px" };
+              return (
+                <tr key={s.id} style={{ opacity: c ? 1 : 0.55 }}>
+                  <td style={td}><input type="checkbox" checked={!!c} disabled={s.belt === "四段"} onChange={ev => toggle(s, ev.target.checked)} /></td>
+                  <td style={{ ...td, fontWeight:700, whiteSpace:"nowrap" }}>{s.name}</td>
+                  <td style={td}><Belt belt={s.belt} /></td>
+                  <td style={{ ...td, whiteSpace:"nowrap", color: ready ? "#27ae60" : "#999999", fontSize: sc(12) }}>{last ? shortDate(last) : "-"}{ready ? "" : "（未滿）"}</td>
+                  <td style={td}>{c && (DAN_BELTS.includes(s.belt)
+                    ? <select style={{ ...S.select, padding:"6px 8px" }} value={c.type} onChange={ev => setType(s, ev.target.value)}><option value="grade">晉等</option><option value="dan">晉段</option></select>
+                    : EXAM_TYPE[c.type])}</td>
+                  <td style={{ ...td, whiteSpace:"nowrap" }}>{c ? (c.type === "grade" ? "段數不變" : `→ ${c.to}`) : ""}</td>
+                  <td style={td}>{c && <input style={{ ...S.input, width: 90, padding:"6px 8px" }} type="number" value={c.fee} onChange={ev => setFee(s, ev.target.value)} />}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div style={{ display:"flex", gap:10, marginTop:16, justifyContent:"flex-end" }}>
+          <button style={S.btn("ghost")} onClick={() => setForm(null)}>取消</button>
+          <button style={S.btn("gold")} onClick={save}>儲存</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!e) return <div>{header}<div style={S.card}><div style={{ fontSize: sc(13), color:"#999999" }}>還沒有晉級考試，按右上角「＋ 新增晉級考試」開始。系統會自動勾選上次晉級滿 {PROMOTION_GAP_MONTHS} 個月的學員。</div></div>{examForm}</div>;
+
+  const closed = examClosed(e, today);
+  const st = examStats(e, entries, byBelt);
+  const rows = st.rows.filter(r => filter === "all" || (filter === "join" ? r.rec?.join : filter === "skip" ? r.rec && !r.rec.join : !r.rec));
+  const copyList = async () => {
+    const list = st.rows.filter(r => r.rec?.join);
+    if (!list.length) return alert("還沒有人報名");
+    const text = [["姓名", "目前道帶", "類型", "考", "費用", "已繳費"], ...list.map(({ s, c, rec }) => [s.name, c.from, EXAM_TYPE[c.type], c.type === "grade" ? c.from : c.to, c.fee, rec.paid ? "✓" : ""])]
+      .map(r => r.join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); alert(`✅ 已複製 ${list.length} 位考生名單，可以貼到 Excel`); }
+    catch { prompt("請複製以下內容：", text); }
+  };
+  const stat = (l, v, color) => <div style={{ ...S.card, flex: "1 1 130px", padding: 16 }}><div style={{ fontSize: sc(12), color:"#666666" }}>{l}</div><div style={{ fontSize: sc(26), fontWeight: 900, color }}>{v}</div></div>;
+
+  return (
+    <div>
+      {header}
+      {sorted.length > 1 && (
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
+          {sorted.map(x => <button key={x.id} style={{ ...smallBtn(x.id === e.id ? "gold" : "ghost"), padding:"8px 16px" }} onClick={() => setSelId(x.id)}>{x.title}{examClosed(x, today) ? "（已截止）" : ""}</button>)}
+        </div>
+      )}
+      <div style={{ ...S.card, marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, flexWrap:"wrap", alignItems:"flex-start" }}>
+          <div>
+            <div style={{ fontSize: sc(20), fontWeight:800 }}>{e.title}</div>
+            <div style={{ fontSize: sc(13), color: closed ? "#e74c3c" : "#27ae60", fontWeight:700, marginTop:4 }}>
+              {closed ? "已截止報名" : "報名中"}{e.deadline ? `・${shortDate(e.deadline)} 截止` : "・沒有截止日"}{e.date ? `・${shortDate(e.date)} 考試` : ""}
+            </div>
+            {e.note && <div style={{ fontSize: sc(13), color:"#444444", marginTop:6 }}>{e.note}</div>}
+          </div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            <button style={smallBtn("ghost")} onClick={() => setForm({ ...e, note: e.note || "", fees: e.fees || EXAM_FEES })}>編輯／改考生</button>
+            <button style={smallBtn("ghost")} onClick={() => setExams(exams.map(x => x.id === e.id ? { ...x, open: !e.open } : x))}>{e.open ? "結束報名" : "重新開放"}</button>
+            <button style={smallBtn("danger")} onClick={remove}>刪除</button>
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
+          <button style={smallBtn("ghost")} disabled={sending} onClick={() => send("me")}>📱 先傳給我自己測試</button>
+          <button style={smallBtn("gold")} disabled={sending || closed} onClick={() => send("all")}>📨 用 LINE 個別通知家長</button>
+          <button style={smallBtn("ghost")} disabled={sending || closed} onClick={() => send("pending")}>⏰ 提醒還沒回覆的家長</button>
+          <button style={smallBtn("ghost")} onClick={copyList}>📋 複製考生名單</button>
+        </div>
+      </div>
+      <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom: 16 }}>
+        {stat("考生", st.rows.length, "#1a1a1a")}
+        {stat("報名", st.joined, "#e74c3c")}
+        {stat("還沒回覆", st.pending, "#999999")}
+        {stat("費用", money(st.total), "#1a1a1a")}
+        {stat("已收", money(st.paid), "#27ae60")}
+        {stat("通過", st.passed, "#2980b9")}
+      </div>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
+        {[["all", "全部"], ["join", `報名（${st.joined}）`], ["skip", `不參加（${st.skipped}）`], ["none", `還沒回覆（${st.pending}）`]].map(([k, l]) =>
+          <button key={k} style={{ ...smallBtn(filter === k ? "gold" : "ghost"), padding:"8px 16px" }} onClick={() => setFilter(k)}>{l}</button>)}
+      </div>
+      <div style={{ ...S.card, padding: 0, overflowX: "auto" }}>
+        <table style={S.table}>
+          <thead><tr>{["學員", "考什麼", "費用", "回覆", "已繳費", "結果"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+          <tbody>
+            {rows.map(({ s, c, rec }) => (
+              <tr key={s.id}>
+                <td style={{ ...S.td, fontWeight:900, fontSize: sc(18), whiteSpace:"nowrap" }}>{s.name}</td>
+                <td style={{ ...S.td, whiteSpace:"nowrap" }}>{candidateText(c)}</td>
+                <td style={S.td}>{money(c.fee)}</td>
+                <td style={{ ...S.td, whiteSpace:"nowrap" }}>
+                  <div style={{ display:"flex", gap:6 }}>
+                    <button style={smallBtn(rec?.join ? "gold" : "ghost")} onClick={() => setRec(s, { join: true, by: "admin", updatedAt: new Date().toISOString() })}>報名</button>
+                    <button style={{ ...smallBtn("ghost"), opacity: rec && !rec.join ? 1 : 0.6, fontWeight: rec && !rec.join ? 800 : 600 }} onClick={() => setRec(s, { join: false, paid: false, by: "admin", updatedAt: new Date().toISOString() })}>不參加</button>
+                  </div>
+                  {!rec && <div style={{ fontSize: sc(11), color:"#bbbbbb", marginTop:4 }}>還沒回覆</div>}
+                </td>
+                <td style={S.td}>{rec?.join ? <input type="checkbox" checked={!!rec.paid} onChange={ev => setRec(s, { paid: ev.target.checked })} /> : ""}</td>
+                <td style={{ ...S.td, whiteSpace:"nowrap" }}>
+                  {rec?.join && (rec.result === "pass"
+                    ? <><span style={{ color:"#27ae60", fontWeight:800 }}>✓ 通過</span> <button style={{ ...smallBtn("ghost"), marginLeft:6 }} onClick={() => undoPass(s, c)}>取消</button></>
+                    : rec.result === "fail"
+                      ? <><span style={{ color:"#999999", fontWeight:700 }}>未通過</span> <button style={{ ...smallBtn("ghost"), marginLeft:6 }} onClick={() => setRec(s, { result: undefined })}>取消</button></>
+                      : <div style={{ display:"flex", gap:6 }}>
+                          <button style={{ ...smallBtn("ghost"), background:"#d5f5e3", color:"#1e8449" }} onClick={() => pass(s, c)}>通過</button>
+                          <button style={smallBtn("ghost")} onClick={() => setRec(s, { result: "fail" })}>未通過</button>
+                        </div>)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {examForm}
     </div>
   );
 }
