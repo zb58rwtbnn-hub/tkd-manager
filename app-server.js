@@ -14,6 +14,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { applyOps } from './src/sync-data.js'
 import { CA_DOWNLOAD } from './certs.js'
+import { mobileFees } from './mobile-fees.js'
 
 const DATA_DIR = path.resolve('data')
 const APP_FILE = path.join(DATA_DIR, 'app-data.json')
@@ -216,7 +217,7 @@ function facesApi(getStore) {
 }
 
 // ── 登入 ──
-const loginPage = (error = '') => `<!doctype html>
+const loginPage = (error = '', nextPath = '') => `<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${APP_NAME} 登入</title>
@@ -230,7 +231,7 @@ const loginPage = (error = '') => `<!doctype html>
   .err { color:#e74c3c; font-size:16px; margin-top:12px; }
   .ca { display:block; margin-top:20px; color:#666; font-size:14px; text-align:center; }
 </style></head>
-<body><form method="post" action="/login">
+<body><form method="post" action="/login">${nextPath ? `<input type="hidden" name="next" value="${nextPath}">` : ''}
   <h1>${APP_NAME}</h1><p>學員管理系統</p>
   <input type="password" name="password" placeholder="請輸入密碼" autofocus autocomplete="current-password">
   <button type="submit">登入</button>
@@ -262,24 +263,26 @@ function authMiddleware(password) {
       const recent = (failures.get(ip) || []).filter(t => Date.now() - t < 10 * 60 * 1000)
       res.setHeader('Content-Type', 'text/html; charset=utf-8')
       if (recent.length >= 10) { res.statusCode = 429; return res.end(loginPage('密碼錯誤太多次，請 10 分鐘後再試')) }
-      const given = new URLSearchParams(await readBody(req)).get('password') || ''
+      const form = new URLSearchParams(await readBody(req))
+      const given = form.get('password') || ''
+      const nextPath = form.get('next') === '/m' ? '/m' : '' // 從手機收費 App 登入的，登入後回到收費 App
       if (!sameText(given, password)) {
         failures.set(ip, [...recent, Date.now()])
         await new Promise(r => setTimeout(r, 1000))
         res.statusCode = 401
-        return res.end(loginPage('密碼錯誤'))
+        return res.end(loginPage('密碼錯誤', nextPath))
       }
       failures.delete(ip)
       res.statusCode = 302
       res.setHeader('Set-Cookie', `${COOKIE}=${token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`)
-      res.setHeader('Location', '/')
+      res.setHeader('Location', nextPath || '/')
       return res.end()
     }
 
     if (url.startsWith('/api/')) return reply(res, 401, { error: '請先登入' })
     res.statusCode = 200
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
-    res.end(loginPage())
+    res.end(loginPage('', url === '/m' || url === '/m/' ? '/m' : ''))
   }
 }
 
@@ -293,6 +296,7 @@ export function appIntegration(env) {
       server.middlewares.use(dataApi(holder))
       server.middlewares.use(facesApi(() => holder.get()))
       server.middlewares.use(imagesApi())
+      server.middlewares.use(mobileFees()) // 📱 手機收費 App：/m
 
       const backup = () => { try { offsiteBackup() } catch (e) { console.error('[備份] iCloud 備份失敗：', e.message) } }
       const first = setTimeout(backup, 30_000)

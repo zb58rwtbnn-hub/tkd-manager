@@ -1648,9 +1648,11 @@ function Fees({ students, setStudents, billing, setBilling }) {
 
   // 取消最近一筆繳費（按錯時使用）
   const undoPaid = (s) => {
-    const last = (s.payments || []).at(-1);
-    if (!last || !confirm(`取消 ${s.name} 在 ${last.date} 的繳費紀錄 $${last.amount.toLocaleString()}？`)) return;
-    setStudents(students.map(x => x.id !== s.id ? x : { ...x, nextDueDate: last.forDue, payments: x.payments.slice(0, -1) }));
+    // 只撤銷學費（比賽、訂購等其他收費在手機收費 App 撤銷）
+    const i = (s.payments || []).map(p => !p.kind || p.kind === "tuition").lastIndexOf(true);
+    const last = s.payments?.[i];
+    if (!last || !confirm(`取消 ${s.name} 在 ${last.date} 的學費紀錄 $${last.amount.toLocaleString()}？`)) return;
+    setStudents(students.map(x => x.id !== s.id ? x : { ...x, nextDueDate: last.forDue || x.nextDueDate, payments: x.payments.filter((_, j) => j !== i) }));
   };
 
   // 發給已綁定的家長；同一位家長有多個小孩時合併成一則

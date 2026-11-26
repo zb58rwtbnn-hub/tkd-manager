@@ -1358,6 +1358,19 @@ function localApi(env) {
       }
 
       // 發繳費提醒給家長：items = [{ id, name, amount, planLabel, nextDueDate }]，同一位家長合併成一則
+      // 收費 App：收費後傳 LINE 收據給綁定的家長 { studentId, name, amount, method, date, planLabel, nextDueDate }
+      if (url === '/api/line/receipt' && req.method === 'POST') {
+        const r = JSON.parse(await readBody(req))
+        const to = Object.entries(readJson(PARENTS_FILE, {})).filter(([, p]) => p.students.includes(r.studentId)).map(([id]) => id)
+        if (!to.length) return reply(res, 200, { sent: 0, unbound: true })
+        const text = `✅ 繳費收據\n\n${r.name}${r.item ? `\n項目：${r.item}` : r.planLabel ? `（${r.planLabel}）` : ''}\n金額：${money(r.amount)}\n方式：${r.method}\n日期：${md(r.date)}` +
+          (r.nextDueDate ? `\n下次繳費日：${md(r.nextDueDate)}` : '') + `\n\n謝謝您！\n${DOJO_NAME}`
+        let sent = 0
+        for (const id of to) { try { await api.push(id, text); sent++ } catch (e) { console.error('[收費] 收據發送失敗：', e.message) } }
+        console.log(`[收費] ${r.name} ${money(r.amount)} ${r.method}，收據發給 ${sent} 位家長`)
+        return reply(res, 200, { sent })
+      }
+
       if (url === '/api/line/notify-parents' && req.method === 'POST') {
         const { items } = JSON.parse(await readBody(req))
         return reply(res, 200, await notifyParents(api, items))
